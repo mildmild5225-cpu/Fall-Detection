@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fall Detection System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #050a0e;
+  --surface: #0a1520;
+  --surface2: #0f1e2e;
+  --border: #1a3048;
+  --accent: #50a3e2;
+  --danger: #d14a8d;
+  --warn: #e1e455;
+  --ok: #41d892;
+  --text: #c8dde8;
+  --text-dim: #4a7a9b;
+  --mono: 'Share Tech Mono', monospace;
+  --sans: 'Sarabun', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid noise texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(0,229,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scanline effect */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.05) 2px,
+    rgba(0,0,0,0.05) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container { max-width: 1400px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+/* Header */
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+  position: sticky;
+  top: 0;
+  background: rgba(5,10,14,0.95);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  animation: pulse-border 2s infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--danger); box-shadow: 0 0 8px rgba(255,59,59,0.3); }
+  50% { border-color: rgba(255,59,59,0.3); box-shadow: none; }
+}
+
+.logo h1 {
+  font-family: var(--mono);
+  font-size: 25px;
+  color: var(--accent);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+.logo span {
+  font-family: var(--mono);
+  font-size: 17px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-family: var(--mono);
+  font-size: 15px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok);
+  animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+#clock { color: var(--accent); letter-spacing: 2px; }
+
+/* Summary cards */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin: 32px 0;
+  border: 1px solid var(--border);
+  background: var(--border);
+}
+
+.stat-card {
+  background: var(--surface);
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.2s;
+}
+
+.stat-card:hover { background: var(--surface2); }
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0.3;
+}
+
+.stat-card.danger::before { background: var(--danger); opacity: 1; animation: pulse-line 1.5s infinite; }
+@keyframes pulse-line {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.stat-label {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.stat-value {
+  font-family: var(--mono);
+  font-size: 42px;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.stat-card.danger .stat-value { color: var(--danger); }
+.stat-card.warn .stat-value { color: var(--warn); }
+.stat-card.ok .stat-value { color: var(--ok); }
+
+.stat-sub {
+  font-size: 18px;
+  color: var(--text-dim);
+}
+
+/* Main content */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+/* Section */
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-title {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title::before {
+  content: '//';
+  color: var(--text-dim);
+}
+
+.section-body { padding: 20px; }
+
+/* Chart */
+.chart-wrap { position: relative; height: 260px; }
+
+/* Person selector */
+.person-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.person-tab {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+}
+
+.person-tab:hover { border-color: var(--accent); color: var(--accent); }
+.person-tab.active {
+  background: rgba(0,229,255,0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Events list */
+.events-list { display: flex; flex-direction: column; gap: 0; }
+
+.event-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(26,48,72,0.5);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.event-item:hover { background: rgba(0,229,255,0.03); }
+.event-item:last-child { border-bottom: none; }
+
+.event-thumb {
+  width: 48px;
+  height: 36px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface2);
+}
+
+.event-info { flex: 1; min-width: 0; }
+
+.event-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-time {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.event-badge {
+  font-family: var(--mono);
+  font-size: 15px;
+  padding: 3px 8px;
+  background: rgba(255,59,59,0.3);
+  border: 1px solid rgba(255,59,59,0.3);
+  color: var(--danger);
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+.mail-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    background: rgba(0,229,255,0.1);
+    border: 1px solid rgba(0,229,255,0.3);
+    color: var(--accent);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay.open { display: flex; }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  max-width: 800px;
+  width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-close {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.modal-close:hover { border-color: var(--danger); color: var(--danger); }
+
+.modal-img {
+  width: 100%;
+  display: block;
+  max-height: 500px;
+  object-fit: contain;
+  background: #000;
+}
+
+.modal-meta {
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.meta-item { }
+.meta-key {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.meta-val {
+  font-size: 13px;
+  color: var(--text);
+  margin-top: 3px;
+}
+
+/* Weekly heatmap */
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: 80px repeat(7, 1fr);
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.heatmap-label { color: var(--text-dim); display: flex; align-items: center; }
+.heatmap-day-label { color: var(--text-dim); text-align: center; padding: 4px 0; }
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  transition: transform 0.1s;
+  cursor: default;
+}
+
+.heatmap-cell:hover { transform: scale(1.2); }
+.heat-0 { background: rgba(0,229,255,0.05); color: transparent; }
+.heat-1 { background: rgba(255,170,0,0.2); color: var(--warn); }
+.heat-2 { background: rgba(255,170,0,0.4); color: var(--warn); }
+.heat-3 { background: rgba(255,59,59,0.3); color: var(--danger); }
+.heat-4 { background: rgba(255,59,59,0.6); color: var(--danger); }
+
+/* Empty state */
+.empty { padding: 40px; text-align: center; color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+
+/* Scrollable */
+.scroll-body { max-height: 420px; overflow-y: auto; padding-right: 4px; }
+.scroll-body::-webkit-scrollbar { width: 3px; }
+.scroll-body::-webkit-scrollbar-track { background: transparent; }
+.scroll-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+@media (max-width: 900px) {
+  .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .main-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">⚠</div>
+        <div>
+          <h1>Fall Detection System</h1>
+          <span>CCTV · AI MONITORING · v1.0</span>
+        </div>
+      </div>
+      <div class="status-bar">
+        <div class="status-dot"></div>
+        <span style="color:var(--ok);letter-spacing:1px">SYSTEM ONLINE</span>
+        <span id="clock">--:--:--</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="container" style="padding-top:24px;padding-bottom:48px">
+
+  <!-- Summary -->
+  <div class="summary-grid" id="summary-grid">
+    <div class="stat-card danger">
+      <div class="stat-label">วันนี้</div>
+      <div class="stat-value" id="s-today">—</div>
+      <div class="stat-sub">เหตุการณ์หกล้ม</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-label">7 วัน</div>
+      <div class="stat-value" id="s-week">—</div>
+      <div class="stat-sub">เหตุการณ์ทั้งหมด</div>
+    </div>
+    <div class="stat-card ok">
+      <div class="stat-label">บุคคล</div>
+      <div class="stat-value" id="s-persons">—</div>
+      <div class="stat-sub">ที่ถูกตรวจพบ</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">รวมทั้งหมด</div>
+      <div class="stat-value" id="s-total">—</div>
+      <div class="stat-sub">ตั้งแต่เริ่มต้น</div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+
+    <!-- Left: chart + weekly -->
+    <div style="display:flex;flex-direction:column;gap:24px">
+
+      <!-- Chart by person -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">สถิติรายบุคคล (7 วัน)</div>
+        </div>
+        <div class="section-body">
+          <div class="person-tabs" id="person-tabs"></div>
+          <div class="chart-wrap">
+            <canvas id="personChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weekly overview chart -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">ภาพรวม 7 วันที่ผ่านมา</div>
+        </div>
+        <div class="section-body">
+          <div class="chart-wrap">
+            <canvas id="weeklyChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: events list -->
+    <div class="section" style="height:fit-content">
+      <div class="section-header">
+        <div class="section-title">เหตุการณ์ล่าสุด</div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="event-count">—</span>
+      </div>
+      <div class="section-body" style="padding:0">
+        <div class="scroll-body" style="padding:0 16px" id="events-list">
+          <div class="empty">กำลังโหลด...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="section-title" id="modal-title">รายละเอียด</div>
+      <button class="modal-close" onclick="document.getElementById('modal').classList.remove('open')">✕</button>
+    </div>
+    <img class="modal-img" id="modal-img" src="" alt="">
+    <div class="modal-meta" id="modal-meta"></div>
+  </div>
+</div>
+
+<script>
+let personChart = null;
+let weeklyChart = null;
+let allEvents = [];
+let selectedPerson = null;
+
+// Clock
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('th-TH', {hour12: false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Chart defaults
+Chart.defaults.color = '#4a7a9b';
+Chart.defaults.borderColor = '#1a3048';
+Chart.defaults.font.family = "'Share Tech Mono', monospace";
+Chart.defaults.font.size = 18;
+
+async function loadSummary() {
+  const r = await fetch('/api/summary');
+  const d = await r.json();
+  document.getElementById('s-today').textContent = d.today_events ?? 0;
+  document.getElementById('s-week').textContent = d.week_events ?? 0;
+  document.getElementById('s-persons').textContent = d.total_persons ?? 0;
+  document.getElementById('s-total').textContent = d.total_events ?? 0;
+}
+
+async function loadEvents() {
+  const r = await fetch('/api/events');
+  allEvents = await r.json();
+  document.getElementById('event-count').textContent = allEvents.length + ' events';
+  renderEvents(allEvents.slice(0, 50));
+}
+
+function renderEvents(events) {
+  const el = document.getElementById('events-list');
+  if (!events.length) {
+    el.innerHTML = '<div class="empty">ยังไม่มีเหตุการณ์</div>';
+    return;
+  }
+  el.innerHTML = events.map(e => `
+    <div class="event-item" onclick="openModal(${JSON.stringify(e).replace(/"/g, '&quot;')})">
+      <img class="event-thumb" src="/${e.image_path}" onerror="this.style.display='none'" alt="">
+      <div class="event-info">
+        <div class="event-name">${e.person_name}</div>
+        <div class="event-time">${formatTime(e.timestamp)}</div>
+      </div>
+      <div class="event-badge">FALL</div>
+      <div class="mail-badge">✉ Notified</div>
+    </div>
+  `).join('');
+}
+
+function formatTime(ts) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleDateString('th-TH') + ' ' + d.toLocaleTimeString('th-TH', {hour12: false});
+  } catch { return ts; }
+}
+
+async function loadPersons() {
+  const r = await fetch('/api/persons');
+  const persons = await r.json();
+  const tabs = document.getElementById('person-tabs');
+  if (!persons.length) {
+    tabs.innerHTML = '<span style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">ยังไม่มีข้อมูล</span>';
+    return;
+  }
+  tabs.innerHTML = persons.map((p, i) => `
+    <button class="person-tab ${i===0?'active':''}" onclick="selectPerson('${p}', this)">${p}</button>
+  `).join('');
+  if (persons.length > 0) selectPerson(persons[0], tabs.querySelector('.person-tab'));
+}
+
+async function selectPerson(name, btn) {
+  selectedPerson = name;
+  document.querySelectorAll('.person-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const r = await fetch(`/api/person/${encodeURIComponent(name)}/stats`);
+  const d = await r.json();
+  renderPersonChart(name, d.stats);
+}
+
+function renderPersonChart(name, stats) {
+  const labels = stats.map(s => s.fall_date);
+  const data = stats.map(s => s.count);
+
+  // Fill missing days
+  const days = [];
+  const counts = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    days.push(dateStr.slice(5));
+    const found = stats.find(s => s.fall_date === dateStr);
+    counts.push(found ? found.count : 0);
+  }
+
+  if (personChart) personChart.destroy();
+  personChart = new Chart(document.getElementById('personChart'), {
+    type: 'bar',
+    data: {
+      labels: days,
+      datasets: [{
+        label: name,
+        data: counts,
+        backgroundColor: 'rgba(147,51,234,0.3)',
+        borderColor: '#9333ea',
+        borderWidth: 1,
+        borderRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { stepSize: 1 },
+          grid: { color: 'rgba(26,48,72,0.5)' }
+        },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+async function loadWeeklyChart() {
+  const r = await fetch('/api/weekly');
+  const data = await r.json();
+
+  // Aggregate by date
+  const byDate = {};
+  data.forEach(d => {
+    byDate[d.fall_date] = (byDate[d.fall_date] || 0) + d.total_falls;
+  });
+
+  const days = [];
+  const counts = [];
+  for (let i = 6; i >= 0; i--) {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    days.push(dateStr.slice(5));
+    counts.push(byDate[dateStr] || 0);
+  }
+
+  if (weeklyChart) weeklyChart.destroy();
+  weeklyChart = new Chart(document.getElementById('weeklyChart'), {
+    type: 'line',
+    data: {
+      labels: days,
+      datasets: [{
+        label: 'เหตุการณ์ทั้งหมด',
+        data: counts,
+        borderColor: '#00e5ff',
+        backgroundColor: 'rgba(0,229,255,0.08)',
+        borderWidth: 1.5,
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: '#00e5ff',
+        pointRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { stepSize: 1 },
+          grid: { color: 'rgba(26,48,72,0.5)' }
+        },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function openModal(event) {
+  document.getElementById('modal-title').textContent = `FALL: ${event.person_name}`;
+  document.getElementById('modal-img').src = '/' + event.image_path;
+  document.getElementById('modal-meta').innerHTML = `
+    <div class="meta-item"><div class="meta-key">บุคคล</div><div class="meta-val">${event.person_name}</div></div>
+    <div class="meta-item"><div class="meta-key">เวลา</div><div class="meta-val">${formatTime(event.timestamp)}</div></div>
+    <div class="meta-item"><div class="meta-key">ตำแหน่ง</div><div class="meta-val">${event.location || '-'}</div></div>
+    <div class="meta-item"><div class="meta-key">ไฟล์ภาพ</div><div class="meta-val" style="font-size:11px;word-break:break-all">${event.image_path}</div></div>
+  `;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('modal'))
+    document.getElementById('modal').classList.remove('open');
+}
+
+async function init() {
+  await Promise.all([loadSummary(), loadEvents(), loadPersons(), loadWeeklyChart()]);
+}
+
+// Auto refresh ทุก 10 วินาที
+init();
+setInterval(init, 10000);
+</script>
+</body>
+</html>
