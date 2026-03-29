@@ -50,7 +50,7 @@ def detect_from_video(video_path, confiden=0.5, use_camera=False):
 
     alert_interval = 5
     last_alert_time = 0
-    fall_threshold_ratio = 1.0
+    fall_threshold_ratio = 1.2
     # เพิ่มก่อน while loop
     name_cache = {}  # เก็บชื่อตาม track id
 
